@@ -41,7 +41,7 @@ with open('/content/drive/MyDrive/merged_model/tokenizer.pickle', 'wb') as handl
 
 # Prepare the dataset
 vocab_size = len(tokenizer.word_index) + 1
-seq_length = 10  # Increase sequence length to handle more tokens
+seq_length = 27  # Increase sequence length to handle more tokens
 dataset = []
 for i in range(seq_length, len(sequences)):
     dataset.append(sequences[i-seq_length:i+1])
@@ -69,32 +69,8 @@ model.fit(dataset[:, :-1], dataset[:, -1], epochs=50, verbose=1)  # Increase epo
 # Save the trained model
 model.save('/content/drive/MyDrive/merged_model/HINAI_upgraded_with_transformer.h5')
 
-# Pruning the model
-prune_low_magnitude = tf.keras.experimental.pruning.prune_low_magnitude
-pruning_params = {
-    'pruning_schedule': tf.keras.experimental.pruning.PolynomialDecay(initial_sparsity=0.0,
-                                                                      final_sparsity=0.5,
-                                                                      begin_step=2000,
-                                                                      end_step=4000)
-}
-
-model_pruned = prune_low_magnitude(model, **pruning_params)
-
-model_pruned.compile(loss='sparse_categorical_crossentropy', optimizer=Adam(learning_rate=3e-4), metrics=['accuracy'])
-model_pruned.fit(dataset[:, :-1], dataset[:, -1], epochs=10, verbose=1)
-
-# Quantization aware training
-quantize_model = tfmot.quantization.keras.quantize_model
-model_quantized = quantize_model(model_pruned)
-
-model_quantized.compile(loss='sparse_categorical_crossentropy', optimizer=Adam(learning_rate=3e-4), metrics=['accuracy'])
-model_quantized.fit(dataset[:, :-1], dataset[:, -1], epochs=10, verbose=1)
-
-# Save the quantized and pruned model
-model_quantized.save('/content/drive/MyDrive/merged_model/HINAI_quantized_pruned.h5')
-
 # Load the trained model and tokenizer for text generation
-model = load_model('/content/drive/MyDrive/merged_model/HINAI_quantized_pruned.h5', custom_objects={'TransformerBlock': TransformerBlock})
+model = load_model('/content/drive/MyDrive/merged_model/HINAI_upgraded_with_transformer.h5', custom_objects={'TransformerBlock': TransformerBlock})
 
 with open('/content/drive/MyDrive/merged_model/tokenizer.pickle', 'rb') as handle:
     tokenizer = pickle.load(handle)
