@@ -1,82 +1,132 @@
+# Transformer-like RNN model with enhanced RNN features and visualization
 
-# Example code for implementing a Transformer-like model with RNN-based architecture
 import torch
 import torch.nn as nn
 import torch.optim as optim
-
-class MinLSTM(nn.Module):
-    def __init__(self, input_size, hidden_size, batch_first=True):
-        super(MinLSTM, self).__init__()
-        self.hidden_size = hidden_size
-        self.batch_first = batch_first
-        self.lstm = nn.LSTM(input_size, hidden_size, batch_first=batch_first)
-
-    def forward(self, x):
-        h0 = torch.zeros(1, x.size(0), self.hidden_size).to(x.device)
-        c0 = torch.zeros(1, x.size(0), self.hidden_size).to(x.device)
-        output, (hn, cn) = self.lstm(x, (h0, c0))
-        return output
+import matplotlib.pyplot as plt
 
 class TransformerRNN(nn.Module):
+    """
+    Transformer-like RNN model combining LSTM layers with a multi-head attention mechanism.
+
+    Args:
+        input_size (int): Number of expected features in the input.
+        hidden_size (int): Number of features in the hidden state.
+        num_layers (int): Number of recurrent layers.
+        num_heads (int): Number of attention heads.
+        output_size (int): Number of features in the output.
+    """
     def __init__(self, input_size, hidden_size, num_layers, num_heads, output_size):
         super(TransformerRNN, self).__init__()
         
-        # Using minimal RNN (minLSTM) as a base layer
-        self.rnn = MinLSTM(input_size, hidden_size)
+        # LSTM layers
+        self.lstm = nn.LSTM(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            batch_first=True
+        )
         
-        # Adding a multi-head attention layer for Transformer-like attention
-        self.attention = nn.MultiheadAttention(embed_dim=hidden_size, num_heads=num_heads)
+        # Multi-head attention layer
+        self.attention = nn.MultiheadAttention(
+            embed_dim=hidden_size,
+            num_heads=num_heads,
+            batch_first=True
+        )
         
-        # Fully connected layer to get the final output
+        # Fully connected layer for output
         self.fc = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
-        # Passing the input through the RNN layer
-        rnn_output = self.rnn(x)
+        """
+        Forward pass through the model.
+
+        Args:
+            x (Tensor): Input tensor of shape (batch_size, sequence_length, input_size).
+
+        Returns:
+            Tensor: Output tensor of shape (batch_size, output_size).
+        """
+        # LSTM forward pass
+        lstm_output, _ = self.lstm(x)
+        # lstm_output shape: (batch_size, sequence_length, hidden_size)
         
-        # Reshaping for compatibility with multi-head attention
-        rnn_output = rnn_output.permute(1, 0, 2)  # Change to (sequence_length, batch_size, hidden_size)
+        # Apply attention mechanism
+        attn_output, _ = self.attention(
+            lstm_output, lstm_output, lstm_output
+        )
+        # attn_output shape: (batch_size, sequence_length, hidden_size)
         
-        # Passing the RNN output through the attention layer
-        attn_output, _ = self.attention(rnn_output, rnn_output, rnn_output)
+        # Use the output of the last time step
+        last_output = attn_output[:, -1, :]  # Shape: (batch_size, hidden_size)
         
-        # Passing the attention output through a fully connected layer
-        attn_output = attn_output.permute(1, 0, 2)  # Change back to (batch_size, sequence_length, hidden_size)
-        output = self.fc(attn_output[:, -1, :])  # Only take the output of the last time step
+        # Pass through the fully connected layer
+        output = self.fc(last_output)  # Shape: (batch_size, output_size)
         
         return output
 
-# Example training setup
 def train_transformer_rnn():
+    """
+    Training function for the TransformerRNN model with loss visualization.
+    """
     # Hyperparameters
-    input_size = 10
-    hidden_size = 32
-    num_layers = 2
-    num_heads = 4
-    output_size = 1
-    num_epochs = 5
-    learning_rate = 0.001
+    input_size = 10        # Number of input features
+    hidden_size = 64       # Number of features in hidden state
+    num_layers = 2         # Number of LSTM layers
+    num_heads = 4          # Number of attention heads
+    output_size = 1        # Number of output features
+    num_epochs = 20        # Number of training epochs
+    learning_rate = 0.001  # Learning rate
+    batch_size = 64        # Batch size
+    sequence_length = 15   # Sequence length
 
-    # Model, loss function, optimizer
-    model = TransformerRNN(input_size, hidden_size, num_layers, num_heads, output_size)
+    # Initialize the model
+    model = TransformerRNN(
+        input_size=input_size,
+        hidden_size=hidden_size,
+        num_layers=num_layers,
+        num_heads=num_heads,
+        output_size=output_size
+    )
+
+    # Loss function and optimizer
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-    # Dummy data for demonstration purposes
-    inputs = torch.randn(64, 10, input_size)  # (batch_size, sequence_length, input_size)
-    targets = torch.randn(64, output_size)  # (batch_size, output_size)
+    # Dummy data for demonstration
+    inputs = torch.randn(batch_size, sequence_length, input_size)
+    targets = torch.randn(batch_size, output_size)
+
+    # List to store loss values for visualization
+    loss_values = []
 
     # Training loop
     for epoch in range(num_epochs):
         model.train()
+        
+        # Forward pass
         outputs = model(inputs)
         loss = criterion(outputs, targets)
         
+        # Backward pass and optimization
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         
+        # Record loss
+        loss_values.append(loss.item())
+        
+        # Print training progress
         print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}')
+    
+    # Visualization of training loss
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(1, num_epochs + 1), loss_values, marker='o')
+    plt.title('Training Loss Over Epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.grid(True)
+    plt.show()
 
 if __name__ == "__main__":
     train_transformer_rnn()
